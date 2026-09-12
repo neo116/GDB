@@ -1,7 +1,10 @@
+""" i stole this main.py code, check License.txt for license for credit to the guy i stole it from """
+
 import asyncio
 import datetime
 import json
 import logging
+import os
 from pathlib import Path
 
 import discord
@@ -9,9 +12,28 @@ from discord.ext import commands
 
 
 def config_load():
-    with open('data/config.json', 'r', encoding='utf-8') as doc:
+    with open('data/config.json', 'r', encoding='utf-8-sig') as doc:
         #  Please make sure encoding is correct, especially after editing the config file
         return json.load(doc)
+
+
+def token_load():
+    """Load TOKEN from the process environment or the local .env file."""
+    token = os.getenv('TOKEN')
+    if token:
+        return token
+
+    env_file = Path('.env')
+    if env_file.exists():
+        for line in env_file.read_text(encoding='utf-8').splitlines():
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            name, value = line.split('=', 1)
+            if name.strip() == 'TOKEN':
+                return value.strip().strip('"').strip("'")
+
+    raise RuntimeError('TOKEN was not found in the environment or .env file.')
 
 
 async def run():
@@ -22,24 +44,29 @@ async def run():
 
     config = config_load()
     bot = Bot(config=config,
-              description=config['description'])
+              description=config.get('description', ''))
     try:
-        await bot.start(config['token'])
+        await bot.start(token_load())
     except KeyboardInterrupt:
         await bot.logout()
 
 
 class Bot(commands.Bot):
     def __init__(self, **kwargs):
+        intents = discord.Intents.default()
+        intents.members = True
+        intents.message_content = True
         super().__init__(
             command_prefix=self.get_prefix_,
-            description=kwargs.pop('description')
+            description=kwargs.pop('description'),
+            intents=intents
         )
         self.start_time = None
         self.app_info = None
 
-        self.loop.create_task(self.track_start())
-        self.loop.create_task(self.load_all_extensions())
+    async def setup_hook(self):
+        asyncio.create_task(self.track_start())
+        await self.load_all_extensions()
 
     async def track_start(self):
         """
@@ -47,7 +74,7 @@ class Bot(commands.Bot):
         Can be used to work out uptime.
         """
         await self.wait_until_ready()
-        self.start_time = datetime.datetime.utcnow()
+        self.start_time = datetime.datetime.now(datetime.UTC)
 
     async def get_prefix_(self, bot, message):
         """
@@ -63,12 +90,10 @@ class Bot(commands.Bot):
         """
         Attempts to load all .py files in /cogs/ as cog extensions
         """
-        await self.wait_until_ready()
-        await asyncio.sleep(1)  # ensure that on_ready has completed and finished printing
         cogs = [x.stem for x in Path('cogs').glob('*.py')]
         for extension in cogs:
             try:
-                self.load_extension(f'cogs.{extension}')
+                await self.load_extension(f'cogs.{extension}')
                 print(f'loaded {extension}')
             except Exception as e:
                 error = f'{extension}\n {type(e).__name__} : {e}'
@@ -101,6 +126,4 @@ class Bot(commands.Bot):
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(run())
+    asyncio.run(run())
