@@ -3,6 +3,8 @@
 UWUWUWUWUWUWUW
 bro aint no way you are reading my thingy, fine ill explain
 
+this a Global Dm Bot
+
 # Command List
 
 ### **Everyone**
